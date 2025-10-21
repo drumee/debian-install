@@ -29,24 +29,28 @@ if [ -f /run/prosody/prosody.pid ]; then
   fi
 fi
 
-if [ "$OWN_SSL" = "" ]; then
+if [ ! -d "$OWN_CERTS_DIR" ]; then
   # In case first init failed. Retry once
   if [ ! -f ${ACME_CERTS_DIR}/${DRUMEE_DOMAIN_NAME}_ecc/${DRUMEE_DOMAIN_NAME}.key ]; then
     /var/lib/drumee/setup-infra/bin/init-acme
   fi
 fi
 
+if [ "$USE_JITIS" != "no" ]; then
+  service prosody restart
+  service jicofo restart
+  service jitsi-videobridge2 restart
+  service coturn restart
+fi
 
-service prosody restart
-service jicofo restart
-service jitsi-videobridge2 restart
-service coturn restart
-service named restart
-service postfix start
+if [ ! -d "$OWN_CERTS_DIR" ]; then
+  service named restart
+fi
+
+service redis-server start
+service mariadb start
 
 if [ -x /usr/sbin/drumee ]; then
-  service redis-server start
-  service mariadb start
   service drumee start main
   sleep 5
   service drumee start main/service
@@ -54,7 +58,9 @@ if [ -x /usr/sbin/drumee ]; then
   drumee install pm2-logrotate
 fi
 
-service postfix restart
+if [ "$PUBLIC_DOMAIN" != "" ]; then
+  service postfix restart
+fi
 service cron reload
 
 echo Factory will start in one hour
