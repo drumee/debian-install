@@ -1,113 +1,143 @@
-# Installation on bare metal or Virtual Machine 
-This packae is dedicated to Debian Distribution Targets only
+# Drumee — Debian install
 
-## Dependencies
-- nginx
-- mariadb
-- prosody
-- jitsi-meet
-- nodejs
-- bind9
-- graphicsmagick
-- ffmpeg
-- redis
-- libreoffice
-- postfix
-- opendkim
+Install Drumee directly on a Debian server or virtual machine, from Debian
+packages — no container. This is the path for a production instance.
 
-## Prerequisite
-### Settings
-- A maiden Internet domain name
-- Control Access to your DNS zone
-- Control Access to your GLU DNS
-- At least one Public IP addresses, IPV4 and/or IPV6
-- Debian 11 or higher
+- **Website:** [drumee.com](https://drumee.com)
+- **Documentation:** [docs.drumee.com](https://docs.drumee.com/introduction/)
 
-### Hardware
-- RAM at least 8Go
-- CPU at leat 2 GHz
-- Enough space to host what you need
+> Debian-family distributions only. For a containerised install see
+> [drumee/docker-hosted](https://github.com/drumee/docker-hosted).
 
-### Recommandations
-- Drumee should be installed on a dedicated disks or partitions
-- MFS (/data) should be not installed on the same partition as server (/srv)
-- If you expect high rate of read/write operations, database base partition (/srv/db) should be installed on a high speed disk or partition, ie. SSD or NVMe 
+---
 
-### Caution
-- The provided domain name can noyt be shared with existing or futur application
-- It is recommanded not to share DB server with any other application
+## Requirements
 
-## Installation 
-### Prepare your ISP settings
+| | Minimum |
+|---|---|
+| OS | Debian 11 or newer |
+| RAM | 8 GB |
+| CPU | 2 GHz, 2 cores |
+| Domain | A dedicated internet domain name, with access to its DNS zone **and** its glue records |
+| Network | At least one public IP address — IPv4 required, IPv6 recommended |
 
-#### Prepare you IP addresses
-This task depends on your Domain Name Provider. Replace *example.org* by your own domain name. If you don't have IP V6 address, just fill in IPV4 fields.
-The purpose of this task to bind your domain name to the Ip Address of your Drumee Server. 
+Storage layout matters here:
 
-In th DNS zone, remove all existing DNS records. Then, create following records in your Domain Name Provider:
+- Put `DRUMEE_DATA_DIR` (the file store) and the server root on **different**
+  partitions.
+- Give `DRUMEE_DB_DIR` its own partition, at least 100 GB, on the fastest disk
+  you have — SSD or NVMe if the instance will see heavy read/write.
+- The domain name **cannot be shared** with any other application, and the
+  database server should not be shared either.
 
-  | Domain Name      |  Type  | Target             |
-  |------------------|--------|--------------------|
-  | example.org      | A      | your.ip.4.address  |
-  | example.org      | AAAA   | your.ip.6.address  |
-  | ns1.example.org  | A      | your.ip.4.address  |
-  | ns1.example.org  | AAAA   | your.ip.6.address  |
-  | ns2.example.org  | A      | your.ip.4.address  |
-  | ns2.example.org  | AAAA   | your.ip.6.address  |
+The installer pulls in and configures nginx, MariaDB, Prosody, Jitsi Meet,
+Node.js, BIND 9, Redis, Postfix, OpenDKIM, LibreOffice, GraphicsMagick and
+FFmpeg, so start from a clean machine rather than one already running a web or
+mail server.
 
-#### Change the default Domain Name Server (DNS)
-This section will replace your ISP DNS by the one that run on your own Synology NAS. To make this effective, open your ISP interface and change current Name Servers to ns1.example.org and ns2.example.org
+## 1. Point your domain at the server
 
-#### Change your GLUE DNS
-Open your ISP interface and add following entries:
-- ns1.example.org 
-- ns2.example.org
+Drumee runs BIND and is authoritative for its own domain, so both the records
+and the glue records have to be in place before installation.
 
-Wait the change to take effects.
+In your DNS zone, replacing `example.org` with your domain — if you have no IPv6
+address, fill in the IPv4 rows only:
 
-#### Check your DNS records
+| Name | Type | Target |
+|---|---|---|
+| `example.org` | A | your IPv4 address |
+| `example.org` | AAAA | your IPv6 address |
+| `ns1.example.org` | A | your IPv4 address |
+| `ns1.example.org` | AAAA | your IPv6 address |
+| `ns2.example.org` | A | your IPv4 address |
+| `ns2.example.org` | AAAA | your IPv6 address |
 
-Open a Shell Terminal and run
+Then at your registrar:
+
+1. Set the domain's name servers to `ns1.example.org` and `ns2.example.org`.
+2. Add both as **glue records**.
+3. Wait for propagation.
+
+Confirm before going further:
 
 ```console
 nslookup example.org
 ```
 
-If everything is OK, you should see response like below.
-
-Server:		192.168.5.1
-Address:	192.168.5.1#53
-
-Non-authoritative answer:
-Name:	example.org
-Address: *your.ip.4.address*
-Name:	example.org
-Address: *your.ip.4.address*
-
-
-### Prepare your settings 
+## 2. Configure
 
 ```console
 git clone https://github.com/drumee/debian-hosted.git
-```
-
-```console
 cd debian-hosted
-```
-
-```console
 cp env.sh drumee.sh
 ```
 
-- Use your favorite editor to change values in the file *drumee.sh* accordingly to your setup. 
-- Save the changes. 
-- Check that GLUE records has been updated.
+Edit `drumee.sh`. The installer validates these and refuses to start if any are
+wrong:
 
-**Ensure changes on your Internet Access Provider has been updated.**
+| Variable | Required | Notes |
+|---|---|---|
+| `DRUMEE_DOMAIN_NAME` | yes | Must match the DNS records above |
+| `PUBLIC_IP4` | yes | Validated as a dotted IPv4 address |
+| `PUBLIC_IP6` | no | Validated if set |
+| `ADMIN_EMAIL` | yes | Becomes the admin account and receives the setup link |
+| `ACME_EMAIL_ACCOUNT` | no | For the ACME certificate; defaults to `ADMIN_EMAIL` |
+| `DRUMEE_DB_DIR` | yes | **The directory must already exist** |
+| `DRUMEE_DATA_DIR` | yes | **The directory must already exist** |
+| `STORAGE_BACKUP` | no | rsync backup destination |
+| `DRUMEE_DESCRIPTION` | no | Free text shown on the login page |
 
-**Ensure directories (DRUMEE_DB_DIR, DRUMEE_DATA_DIR) exist and have enough space**
+Two things that will stop the install cold:
 
-*Following command must be executed as root user i.e su, not sudo*
+- `DRUMEE_DB_DIR` and `DRUMEE_DATA_DIR` are checked for existence — create them
+  first, with enough space.
+- The installer refuses to place them under system paths (`/usr`, `/etc`,
+  `/var`-adjacent system directories, `/root`, and so on).
+
+## 3. Install
+
+Run as **root** — `su`, not `sudo`:
+
 ```console
-./install 
+./install
 ```
+
+The installer fetches the Drumee package list from `app.drumee.com`, installs
+`drumee-infra`, `drumee-schemas`, `drumee-server-pod`, `drumee-ui-pod` and
+`drumee-static`, then provisions the database, requests certificates and starts
+the services.
+
+When it finishes, a setup link is sent to `ADMIN_EMAIL`. Open it, set the admin
+password, and the instance is live.
+
+### Options
+
+```console
+./install --env-file=/path/to/other.sh   # use a different env file
+./reinstall                              # purge the Drumee packages and install again
+```
+
+`reinstall` removes `drumee-ui-pod`, `drumee-server-pod`, `drumee-schemas`,
+`drumee-infra` and `drumee-static` before reinstalling. It does **not** delete
+your data or database directories.
+
+If `drumee-infra` is already installed the script stops rather than reinstalling
+over a working system; pass `--force-infra-install=yes` if that is really what
+you want.
+
+## Other ways to install
+
+| Path | Repository |
+|---|---|
+| Docker | [drumee/docker-hosted](https://github.com/drumee/docker-hosted) |
+| Synology NAS | [drumee/synology-hosted](https://github.com/drumee/synology-hosted) |
+| Local development environment | [drumee/starter-kit](https://github.com/drumee/starter-kit) |
+
+## License
+
+AGPL-3.0 — see [LICENSE](LICENSE).
+
+## Contributing
+
+See the org [CONTRIBUTING guide](https://github.com/drumee/.github/blob/main/CONTRIBUTING.md).
+Questions and self-hosting help: [Discussions](https://github.com/orgs/drumee/discussions).
